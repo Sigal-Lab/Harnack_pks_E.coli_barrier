@@ -1,0 +1,202 @@
+---
+title: "Microarray Data Rspondin KI and WT / E.coli pks+ WT and mutant + DSS - GSEA analysis on DGE results - Plots"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, warning=FALSE, message=FALSE}
+rm(list=ls())
+
+#suppressMessages(library(xlsx))
+library(ggplot2)
+library(knitr)
+library(scales)
+library(fgsea)
+library(data.table)
+library(ggvenn)
+
+source("./fGSEA_plot_functions.R")
+
+result_folder = "../Results/"
+if (!file.exists(result_folder)) dir.create(result_folder, recursive=T)
+
+set.seed(12345)
+```
+
+# Overview
+
+This is data from a stomach antrum samples of various mouse experiments (Rspo KO vs WT) hybridized as dual channel libraries to Agilent 014568 micro arrays. 
+
+For analysis, a preranked analysis using the R package fGSEA was used that should give similar results to preranked analysis in standard GSEA. 
+
+
+```{r}
+load(file.path(result_folder, "DGE_results.Rdata"))
+```
+
+```{r}
+GSEA_datafile = file.path(result_folder,"fGSEA_Results.Rdata")
+load(GSEA_datafile)
+load(file.path(result_folder, "Geneset_collections.Rdata"))
+```
+
+# MSigDB gene sets
+
+Since MSigDB gene sets use human gene symbols to map genes to pathways we translated mouse symbols to homologous human symbols using HomologeneDB from NCBI (build 68). 
+
+
+```{r}
+homologene_human_mouse = fread("../Data/External/homologene_9606_10090.txt")
+all_entrez_ids = data.frame(EntrezID=unique(all_results[[1]]$EntrezID))
+all_symbols = data.frame(GeneSymbol=unique(all_results[[1]]$GeneSymbol))
+a1 = merge(all_symbols, homologene_human_mouse[,c("entrez_1","symbol_1","symbol_2"), with=F], by.x="GeneSymbol", by.y="symbol_2", all.x=T, sort=F)
+
+mouse_to_human=a1
+mouse_to_human = subset(mouse_to_human, !is.na(GeneSymbol) & !is.na(symbol_1) & !symbol_1 == "")
+rownames(mouse_to_human) = mouse_to_human$GeneSymbol
+```
+
+
+# Plots for selected gene sets
+
+
+## Comparison E.coli_WT_vs_mutant_DSS_colon
+
+```{r}
+selected_genesets = c("Haberman_UC_up", "Haberman_UC_down")
+```
+
+```{r}
+sel_comparison = "E.coli_WT_vs_mutant_DSS_colon"
+```
+
+### Mouse gene sets
+
+```{r}
+tmp = all_results[[sel_comparison]]
+ranks = unlist(tapply(tmp$t, tmp$GeneSymbol, function(x) x[which(abs(x)==max(abs(x)))] ))
+
+for (g in selected_genesets) {
+  rr = subset(all_gsea_results[[sel_comparison]], pathway==g)
+  if(nrow(rr)==0) warning(paste0("Gene set ", g, "not found"))
+  loc = unlist(lapply(gset_collections_mouse, function(x) grep(g, names(x))))
+  if(length(loc) == 0) next
+  sel_genes = unlist(gset_collections_mouse[[names(loc)]][loc])
+  p = myPlotEnrichment(sel_genes, ranks)
+  print(p + ggtitle(paste0(sel_comparison," - ",g), paste("FDR=",prettyNum(rr$FDR_global, digits=2),", p=",prettyNum(rr$pval, digits=2), ", ES=",prettyNum(rr$ES, digits=2), ", NES=",prettyNum(rr$NES, digits=2) ) ) )
+}
+```
+
+```{r}
+for (g in selected_genesets) {
+  rr = subset(all_gsea_results[[sel_comparison]], pathway==g)
+  if(nrow(rr)==0) warning(paste0("Gene set ", g, "not found"))
+  loc = unlist(lapply(gset_collections_mouse, function(x) grep(g, names(x))))
+  if(length(loc) == 0) next
+  sel_genes = unlist(gset_collections_mouse[[names(loc)]][loc])
+  p = myPlotEnrichment_pdf(sel_genes, ranks, linewidth = 2)
+  pdf(file=file.path(result_folder, paste0(sel_comparison,"_",g, ".pdf")), width=8, height = 6)
+  print(p + ggtitle(paste0(sel_comparison," - ",g), paste("FDR=",prettyNum(rr$FDR_global, digits=2),", p=",prettyNum(rr$pval, digits=2), ", ES=",prettyNum(rr$ES, digits=2), ", NES=",prettyNum(rr$NES, digits=2) ) ) )
+  dev.off()
+}
+```
+
+
+### Human gene sets
+
+```{r}
+tmp = all_results[[sel_comparison]]
+tmp2 = merge(tmp, mouse_to_human, by="GeneSymbol")
+tmp2 = subset(tmp2, !is.na(symbol_1))
+ranks = unlist(tapply(tmp2$t, tmp2$symbol_1, function(x) x[which(abs(x)==max(abs(x)))] ))
+
+for (g in selected_genesets) {
+  rr = subset(all_gsea_results[[sel_comparison]], pathway==g)
+  if(nrow(rr)==0) warning(paste0("Gene set ", g, "not found"))
+  loc = unlist(lapply(gset_collections_human, function(x) grep(g, names(x))))
+  if(length(loc) == 0) next 
+  sel_genes = unlist(gset_collections_human[[names(loc)]][loc])
+  p = myPlotEnrichment(sel_genes, ranks)
+  print(p + ggtitle(paste0(sel_comparison," - ",g), paste("FDR=",prettyNum(rr$FDR_global, digits=2),", p=",prettyNum(rr$pval, digits=2), ", ES=",prettyNum(rr$ES, digits=2), ", NES=",prettyNum(rr$NES, digits=2) ) ) )
+}
+```
+
+```{r}
+for (g in selected_genesets) {
+  rr = subset(all_gsea_results[[sel_comparison]], pathway==g)
+  loc = unlist(lapply(gset_collections_human, function(x) grep(g, names(x))))
+  if(length(loc) == 0) next 
+  sel_genes = unlist(gset_collections_human[[names(loc)]][loc])
+  p = myPlotEnrichment_pdf(sel_genes, ranks, linewidth = 2)
+  pdf(file=file.path(result_folder, paste0(sel_comparison,"_",g, ".pdf")), width=8, height = 6)
+  print(p + ggtitle(paste0(sel_comparison," - ",g), paste("FDR=",prettyNum(rr$FDR_global, digits=2),", p=",prettyNum(rr$pval, digits=2), ", ES=",prettyNum(rr$ES, digits=2), ", NES=",prettyNum(rr$NES, digits=2) ) ) )
+  dev.off()
+}
+```
+
+
+# Overlaps with DGE
+
+We define differentially expressed genes as those with raw p-value < 0.05 and log2FC >/< 0. We count each gene only once, even if more than one probeset exists.
+
+```{r, fig.width=10, fig.height=6}
+selected_genesets = c("Haberman_UC_up", "Haberman_UC_down")
+sel_comparison = "E.coli_WT_vs_mutant_DSS_colon"
+
+for (g in selected_genesets) {
+  rr = subset(all_gsea_results[[sel_comparison]], pathway==g)
+  loc = unlist(lapply(gset_collections_human, function(x) grep(g, names(x))))
+  if(length(loc) == 0) next 
+  sel_genes = unlist(gset_collections_human[[names(loc)]][loc])
+
+  tmp = all_results[[sel_comparison]]
+  tmp2 = merge(tmp, mouse_to_human, by="GeneSymbol")
+  tmp2 = subset(tmp2, !is.na(symbol_1))
+  dge_up = subset(tmp2, P.Value < 0.05 & logFC > 0)
+  dge_down = subset(tmp2, P.Value < 0.05 & logFC < 0)
+  
+  up_genes = unique(dge_up$symbol_1)
+  down_genes = unique(dge_down$symbol_1)
+  
+  gs_genes = unique(sel_genes)
+  
+  p = ggvenn(list(up_genes = up_genes, gs_genes=gs_genes),
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4) + ggtitle(paste0("Up genes in ",sel_comparison, " vs. ", g))
+  print(p)
+  
+  p = ggvenn(list(down_genes = down_genes, gs_genes=gs_genes),
+  fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+  stroke_size = 0.5, set_name_size = 4) + ggtitle(paste0("Down genes in ",sel_comparison, " vs. ", g))
+  print(p)
+  
+  print(paste0("Leading edge ",g ))
+  print("============")
+  cat(sort(unlist(rr$leadingEdge)))
+  
+}
+  
+  
+```
+
+
+### PDF export
+
+All plots have been exported to corresponding files in PDF format in folder `r result_folder`.
+
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
